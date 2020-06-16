@@ -5,6 +5,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 fn content_type(path: &std::path::Path) -> &str {
     match path.extension().map(|s| s.to_str()).flatten() {
         Some("js") => "application/javascript",
+        Some("json") => "application/json",
 
         Some("woff") => "font/woff",
 
