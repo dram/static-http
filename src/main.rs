@@ -49,6 +49,10 @@ fn serve(root: &str, host: &str, port: &str) -> Result<()> {
 
         reader.read_line(&mut buffer)?;
 
+        if buffer.len() == 0 {
+            continue;
+        }
+
         eprintln!("Processing {} ...", buffer.trim_end());
 
         let mut pieces = buffer.split_whitespace();
