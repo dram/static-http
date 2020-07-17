@@ -30,10 +30,10 @@ fn main() -> Result<()> {
     let host = arguments.get(1).map_or("127.0.0.1", String::as_str);
     let port = arguments.get(2).map_or("8000", String::as_str);
 
-    serve(root, host, port)
+    main_loop(root, host, port)
 }
 
-fn serve(root: &str, host: &str, port: &str) -> Result<()> {
+fn main_loop(root: &str, host: &str, port: &str) -> Result<()> {
     eprintln!("Listening on {}:{} ...", host, port);
 
     let root = std::path::Path::new(root);
@@ -41,43 +41,59 @@ fn serve(root: &str, host: &str, port: &str) -> Result<()> {
     let listener = std::net::TcpListener::bind(format!("{}:{}", host, port))?;
 
     for stream in listener.incoming() {
-        let mut stream = stream?;
-
-        let mut reader = std::io::BufReader::new(&mut stream);
-
-        let mut buffer = String::new();
-
-        reader.read_line(&mut buffer)?;
-
-        if buffer.len() == 0 {
-            continue;
+        match serve(&mut stream?, &root) {
+            Ok(_) => continue,
+            Err(message) => eprintln!("Error: {}", message),
         }
+    }
 
-        eprintln!("Processing {} ...", buffer.trim_end());
+    Ok(())
+}
 
-        let mut pieces = buffer.split_whitespace();
+fn read_request_line(stream: &mut std::net::TcpStream) -> Result<String> {
+    let mut buffer = String::new();
 
-        if matches!(pieces.next(), Some("GET")) {
-            if let Some(uri) = pieces.next() {
-                if let Ok(path) = root.join(&uri[1..]).canonicalize() {
-                    if path.starts_with(root) {
-                        if path.is_dir() {
-                            serve_file(&mut stream, &path.join("index.html"))?
-                        } else {
-                            serve_file(&mut stream, &path)?
-                        }
+    let mut reader = std::io::BufReader::new(stream);
+
+    reader.read_line(&mut buffer)?;
+
+    Ok(buffer.trim_end().to_string())
+}
+
+fn serve(
+    stream: &mut std::net::TcpStream,
+    root: &std::path::Path,
+) -> Result<()> {
+    let request_line = read_request_line(stream)?;
+
+    if request_line.len() == 0 {
+        return Ok(());
+    }
+
+    eprintln!("Processing {} ...", request_line);
+
+    let mut pieces = request_line.split_whitespace();
+
+    if matches!(pieces.next(), Some("GET")) {
+        if let Some(uri) = pieces.next() {
+            if let Ok(path) = root.join(&uri[1..]).canonicalize() {
+                if path.starts_with(root) {
+                    if path.is_dir() {
+                        serve_file(stream, &path.join("index.html"))?
                     } else {
-                        serve_status(&mut stream, 403, "Forbidden")?
+                        serve_file(stream, &path)?
                     }
                 } else {
-                    serve_status(&mut stream, 404, "Not Found")?
+                    serve_status(stream, 403, "Forbidden")?
                 }
             } else {
-                serve_status(&mut stream, 400, "Bad Request")?
+                serve_status(stream, 404, "Not Found")?
             }
         } else {
-            serve_status(&mut stream, 400, "Bad Request")?
+            serve_status(stream, 400, "Bad Request")?
         }
+    } else {
+        serve_status(stream, 400, "Bad Request")?
     }
 
     Ok(())
